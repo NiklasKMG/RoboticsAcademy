@@ -1,49 +1,69 @@
-"""Example: show both drone cameras -- no WebGUI panel required.
+"""Example: show both drone cameras in the WebGUI panel.
 
-The intended path is the browser's WebGUI panel (WebGUI.py forwards
-/webgui/image_debug_left and /webgui/image_debug_right to it), but that
-relies on a chain of things that are not reliably wired up for this
-exercise right now (WebGUI.py is never auto-started -- see the empty
-"entrypoints" column in the exercise DB -- and the internal GUI bridge on
-port 2303 has shown signs of not surviving repeated tool restarts within
-one session).
+HAL.get_frontal_image() / HAL.get_ventral_image() give you the raw frames.
+WebGUI.py already knows how to display them: it subscribes to two ROS2
+debug-image topics and forwards whatever arrives on them to the browser
+panel:
 
-This script sidesteps all of that: it opens two plain OpenCV windows
-directly on the simulator's own X display (":2", the same one gzclient
-renders into, visible through the "Simulator" view / noVNC). No WebGUI
-process, no extra websocket hop -- just HAL images in a window.
+    /webgui/image_debug_left   -> left panel in the browser
+    /webgui/image_debug_right  -> right panel in the browser
 
-Paste this into the code editor as your academy.py and run it; check the
-Simulator view (not the WebGUI camera panel) for two windows titled
-"Frontal camera" and "Ventral camera". Stop it again once you have seen
-them, it is only meant as a quick check, not a real solution.
+WebGUI.py is now auto-started alongside this script (see the exercise's
+"entrypoints" DB entry), so all this script needs to do is publish both
+cameras to those two topics -- no need to launch WebGUI.py yourself.
+
+Paste this into the code editor as your academy.py and run it; you should
+see both cameras appear live in the WebGUI panel. Stop it again once you
+have seen them, it is only meant as a quick check, not a real solution.
 """
 
-import os
 import time
-
-import cv2
 
 import HAL
 
-os.environ["DISPLAY"] = ":2"
+import rclpy
+from rclpy.node import Node
+from sensor_msgs.msg import Image
+from cv_bridge import CvBridge
 
-DURATION_SECONDS = 30
+
+DURATION_SECONDS = 30  # how long to stream before stopping on its own
+RATE_HZ = 10  # publish rate; the debug view does not need full frame rate
+
+
+class DebugImagePublisher(Node):
+    """Publishes both drone cameras to the topics WebGUI.py listens on."""
+
+    def __init__(self):
+        super().__init__("rescue_people_camera_preview")
+        self.bridge = CvBridge()
+        self.pub_left = self.create_publisher(Image, "/webgui/image_debug_left", 10)
+        self.pub_right = self.create_publisher(Image, "/webgui/image_debug_right", 10)
+
+    def publish(self, frontal_bgr, ventral_bgr):
+        # HAL images are already BGR8 numpy arrays (see hal_interfaces camera.py),
+        # so no color conversion is needed before handing them to cv_bridge.
+        self.pub_left.publish(self.bridge.cv2_to_imgmsg(frontal_bgr, encoding="bgr8"))
+        self.pub_right.publish(self.bridge.cv2_to_imgmsg(ventral_bgr, encoding="bgr8"))
+
+
+if not rclpy.ok():
+    rclpy.init()
+
+gui_node = DebugImagePublisher()
 
 print(
-    f"Showing both cameras for {DURATION_SECONDS}s as OpenCV windows on the "
-    "simulator display -- look at the Simulator view, not the WebGUI panel.",
+    f"Streaming both cameras to the WebGUI for {DURATION_SECONDS}s "
+    "(left = frontal cam, right = ventral cam)...",
     flush=True,
 )
 
 start = time.time()
+period = 1.0 / RATE_HZ
 while time.time() - start < DURATION_SECONDS:
     frontal = HAL.get_frontal_image()
     ventral = HAL.get_ventral_image()
-    cv2.imshow("Frontal camera", frontal)
-    cv2.imshow("Ventral camera", ventral)
-    cv2.waitKey(1)
-    time.sleep(0.05)
+    gui_node.publish(frontal, ventral)
+    time.sleep(period)
 
-cv2.destroyAllWindows()
-print("Done.", flush=True)
+print("Done. Both cameras should have appeared in the WebGUI panel.", flush=True)
