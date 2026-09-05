@@ -138,3 +138,12 @@ def showImage(image):
 
 def showLeftImage(image):
     gui.setLeftImage(image)
+
+
+# gui.start() (called from WebGUI.__init__) only spawns background daemon
+# threads (websocket client, ROS2 subscriptions, GUI update loop). Without
+# something blocking here, this script reaches the end of the module and
+# the process exits immediately, killing those daemon threads before they
+# get a chance to connect and forward any images.
+while True:
+    time.sleep(1)
