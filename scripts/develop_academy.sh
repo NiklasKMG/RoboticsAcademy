@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # Initialize variables with default values
-ram_version="https://github.com/JdeRobot/RoboticsApplicationManager.git"
-branch="humble-devel"
+ram_version="https://github.com/NiklasKMG/RoboticsApplicationManager.git"
+branch="dev/apple-silicon"
 radi_version="humble"
 gpu_mode="false"
 nvidia="false"
